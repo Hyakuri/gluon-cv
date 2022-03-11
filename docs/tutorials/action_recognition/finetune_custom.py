@@ -106,11 +106,13 @@ per_device_batch_size = 5
 num_workers = 0
 batch_size = per_device_batch_size * num_gpus
 
-train_dataset = VideoClsCustom(root=os.path.expanduser('~/.mxnet/datasets/ucf101/rawframes'),
-                               setting=os.path.expanduser('~/.mxnet/datasets/ucf101/ucfTrainTestlist/ucf101_train_split_1_rawframes.txt'),
+train_dataset = VideoClsCustom(root=os.path.expanduser(r'.\\'),
+                               setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record.txt'),
                                train=True,
-                               new_length=32,
-                               transform=transform_train)
+                               new_length=60,
+                               transform=transform_train,
+                               video_loader=True,
+                               use_decord=True)
 print('Load %d training samples.' % len(train_dataset))
 train_data = gluon.data.DataLoader(train_dataset, batch_size=batch_size,
                                    shuffle=True, num_workers=num_workers)
@@ -125,7 +127,7 @@ train_data = gluon.data.DataLoader(train_dataset, batch_size=batch_size,
 #
 # For simple fine-tuning, people usually just replace the last classification (dense) layer to the number of classes in your dataset
 # without changing other things. In GluonCV, you can get your customized model with one line of code.
-net = get_model(name='i3d_resnet50_v1_custom', nclass=101)
+net = get_model(name='i3d_resnet50_v1_custom', nclass=10)
 net.collect_params().reset_ctx(ctx)
 print(net)
 
@@ -180,7 +182,7 @@ train_history = TrainingHistory(['training-acc'])
 #   In order to finish the tutorial quickly, we only fine tune for 3 epochs, and 100 iterations per epoch for UCF101.
 #   In your experiments, you can set the hyper-parameters depending on your dataset.
 
-epochs = 0
+epochs = 50
 lr_decay_count = 0
 
 for epoch in range(epochs):
