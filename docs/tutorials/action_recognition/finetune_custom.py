@@ -46,6 +46,10 @@ from gluoncv.data import VideoClsCustom
 from gluoncv.model_zoo import get_model
 from gluoncv.utils import makedirs, LRSequential, LRScheduler, split_and_load, TrainingHistory
 
+import pandas as pd
+import torch
+import torchvision.models as models
+
 
 ######################################################################
 # Custom DataLoader
@@ -99,143 +103,184 @@ from gluoncv.utils import makedirs, LRSequential, LRScheduler, split_and_load, T
 # For your own dataset, you can just replace the value of ``root`` and ``setting`` to your data directory and your prepared text file.
 # Let's first define some basics.
 
-num_gpus = 1
-ctx = [mx.gpu(i) for i in range(num_gpus)]
-transform_train = video.VideoGroupTrainTransform(size=(224, 224), scale_ratios=[1.0, 0.8], mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-per_device_batch_size = 5
-num_workers = 0
-batch_size = per_device_batch_size * num_gpus
+def main(target_name, save_rootpath):
+    num_gpus = 1
+    ctx = [mx.gpu(i) for i in range(num_gpus)]
+    transform_train = video.VideoGroupTrainTransform(size=(224, 224), scale_ratios=[1.0, 0.8], mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    per_device_batch_size = 5
+    num_workers = 0
+    batch_size = per_device_batch_size * num_gpus
 
-train_dataset = VideoClsCustom(root=os.path.expanduser(r'.\\'),
-                               setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record.txt'),
-                               train=True,
-                               new_length=60,
-                               transform=transform_train,
-                               video_loader=True,
-                               use_decord=True)
-print('Load %d training samples.' % len(train_dataset))
-train_data = gluon.data.DataLoader(train_dataset, batch_size=batch_size,
-                                   shuffle=True, num_workers=num_workers)
-
-
-################################################################
-# Custom Network
-# --------------
-#
-# You can always define your own network architecture. Here, we want to show how to fine-tune on a pre-trained model.
-# Since I3D model is a very popular network, we will use I3D with ResNet50 backbone trained on Kinetics400 dataset (i.e., ``i3d_resnet50_v1_kinetics400``) as an example.
-#
-# For simple fine-tuning, people usually just replace the last classification (dense) layer to the number of classes in your dataset
-# without changing other things. In GluonCV, you can get your customized model with one line of code.
-net = get_model(name='i3d_resnet50_v1_custom', nclass=10)
-net.collect_params().reset_ctx(ctx)
-print(net)
-
-################################################################
-# We also provide other customized network architectures for you to use on your own dataset. You can simply change the ``dataset`` part in
-# any pretrained model name to ``custom``, e.g., ``slowfast_4x16_resnet50_kinetics400`` to ``slowfast_4x16_resnet50_custom``.
-#
-# Once you have the dataloader and network for your own dataset, the rest is the same as in previous tutorials.
-# Just define the optimizer, loss and metric, and kickstart the training.
+    train_dataset = VideoClsCustom(root=os.path.expanduser(r'.\\'),
+                                setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record.txt'),
+                                train=True,
+                                new_length=60,
+                                transform=transform_train,
+                                video_loader=True,
+                                use_decord=True)
+    print('Load %d training samples.' % len(train_dataset))
+    train_data = gluon.data.DataLoader(train_dataset, batch_size=batch_size,
+                                    shuffle=True, num_workers=num_workers)
 
 
-################################################################
-# Optimizer, Loss and Metric
-# --------------------------
+    ################################################################
+    # Custom Network
+    # --------------
+    #
+    # You can always define your own network architecture. Here, we want to show how to fine-tune on a pre-trained model.
+    # Since I3D model is a very popular network, we will use I3D with ResNet50 backbone trained on Kinetics400 dataset (i.e., ``i3d_resnet50_v1_kinetics400``) as an example.
+    #
+    # For simple fine-tuning, people usually just replace the last classification (dense) layer to the number of classes in your dataset
+    # without changing other things. In GluonCV, you can get your customized model with one line of code.
+    net = get_model(name='i3d_resnet50_v1_custom', nclass=13)
+    net.collect_params().reset_ctx(ctx)
+    print(net)
 
-# Learning rate decay factor
-lr_decay = 0.1
-# Epochs where learning rate decays
-lr_decay_epoch = [40, 80, 100]
+    ################################################################
+    # We also provide other customized network architectures for you to use on your own dataset. You can simply change the ``dataset`` part in
+    # any pretrained model name to ``custom``, e.g., ``slowfast_4x16_resnet50_kinetics400`` to ``slowfast_4x16_resnet50_custom``.
+    #
+    # Once you have the dataloader and network for your own dataset, the rest is the same as in previous tutorials.
+    # Just define the optimizer, loss and metric, and kickstart the training.
 
-# Stochastic gradient descent
-optimizer = 'sgd'
-# Set parameters
-optimizer_params = {'learning_rate': 0.001, 'wd': 0.0001, 'momentum': 0.9}
 
-# Define our trainer for net
-trainer = gluon.Trainer(net.collect_params(), optimizer, optimizer_params)
+    ################################################################
+    # Optimizer, Loss and Metric
+    # --------------------------
 
-################################################################
-# In order to optimize our model, we need a loss function.
-# For classification tasks, we usually use softmax cross entropy as the
-# loss function.
+    # Learning rate decay factor
+    lr_decay = 0.1
+    # Epochs where learning rate decays
+    lr_decay_epoch = [40, 80, 100]
 
-loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
+    # Stochastic gradient descent
+    optimizer = 'sgd'
+    # Set parameters
+    optimizer_params = {'learning_rate': 0.001, 'wd': 0.0001, 'momentum': 0.9}
 
-################################################################
-# For simplicity, we use accuracy as the metric to monitor our training
-# process. Besides, we record metric values, and will print them at the
-# end of training.
+    # Define our trainer for net
+    trainer = gluon.Trainer(net.collect_params(), optimizer, optimizer_params)
 
-train_metric = mx.metric.Accuracy()
-train_history = TrainingHistory(['training-acc'])
+    ################################################################
+    # In order to optimize our model, we need a loss function.
+    # For classification tasks, we usually use softmax cross entropy as the
+    # loss function.
 
-################################################################
-# Training
-# --------
-#
-# After all the preparations, we can finally start training!
-# Following is the script.
-#
-# .. note::
-#   In order to finish the tutorial quickly, we only fine tune for 3 epochs, and 100 iterations per epoch for UCF101.
-#   In your experiments, you can set the hyper-parameters depending on your dataset.
+    loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
 
-epochs = 50
-lr_decay_count = 0
+    ################################################################
+    # For simplicity, we use accuracy as the metric to monitor our training
+    # process. Besides, we record metric values, and will print them at the
+    # end of training.
 
-for epoch in range(epochs):
-    tic = time.time()
-    train_metric.reset()
-    train_loss = 0
+    train_metric = mx.metric.Accuracy()
+    train_history = TrainingHistory(['training-acc'])
 
-    # Learning rate decay
-    if epoch == lr_decay_epoch[lr_decay_count]:
-        trainer.set_learning_rate(trainer.learning_rate*lr_decay)
-        lr_decay_count += 1
+    ################################################################
+    # Training
+    # --------
+    #
+    # After all the preparations, we can finally start training!
+    # Following is the script.
+    #
+    # .. note::
+    #   In order to finish the tutorial quickly, we only fine tune for 3 epochs, and 100 iterations per epoch for UCF101.
+    #   In your experiments, you can set the hyper-parameters depending on your dataset.
 
-    # Loop through each batch of training data
-    for i, batch in enumerate(train_data):
-        # Extract data and label
-        data = split_and_load(batch[0], ctx_list=ctx, batch_axis=0)
-        label = split_and_load(batch[1], ctx_list=ctx, batch_axis=0)
+    epochs = 100
+    lr_decay_count = 0
 
-        # AutoGrad
-        with ag.record():
-            output = []
-            for _, X in enumerate(data):
-                X = X.reshape((-1,) + X.shape[2:])
-                pred = net(X)
-                output.append(pred)
-            loss = [loss_fn(yhat, y) for yhat, y in zip(output, label)]
+    
+    history_record = pd.DataFrame(columns=['epoch', 'train_loss', 'train_acc'])
+    model_save_rootpath = os.path.join(save_rootpath, "model")
+    history_save_abspath = os.path.join(save_rootpath, "history")
 
-        # Backpropagation
-        for l in loss:
-            l.backward()
+    for epoch in range(epochs):
+        tic = time.time()
+        train_metric.reset()
+        train_loss = 0
+        
+        model_save_abspath = os.path.join(model_save_rootpath, 'model_epoch_{}.pth'.format(epoch))
+        
 
-        # Optimize
-        trainer.step(batch_size)
+        # Learning rate decay
+        if epoch == lr_decay_epoch[lr_decay_count]:
+            trainer.set_learning_rate(trainer.learning_rate*lr_decay)
+            lr_decay_count += 1
 
-        # Update metrics
-        train_loss += sum([l.mean().asscalar() for l in loss])
-        train_metric.update(label, output)
+        # Loop through each batch of training data
+        for i, batch in enumerate(train_data):
+            # Extract data and label
+            data = split_and_load(batch[0], ctx_list=ctx, batch_axis=0)
+            label = split_and_load(batch[1], ctx_list=ctx, batch_axis=0)
 
-        if i == 100:
-            break
+            # AutoGrad
+            with ag.record():
+                output = []
+                for _, X in enumerate(data):
+                    X = X.reshape((-1,) + X.shape[2:])
+                    pred = net(X)
+                    output.append(pred)
+                loss = [loss_fn(yhat, y) for yhat, y in zip(output, label)]
 
-    name, acc = train_metric.get()
+            # Backpropagation
+            for l in loss:
+                l.backward()
 
-    # Update history and print metrics
-    train_history.update([acc])
-    print('[Epoch %d] train=%f loss=%f time: %f' %
-        (epoch, acc, train_loss / (i+1), time.time()-tic))
+            # Optimize
+            trainer.step(batch_size)
 
-# We can plot the metric scores with:
-train_history.plot()
+            # Update metrics
+            train_loss += sum([l.mean().asscalar() for l in loss])
+            train_metric.update(label, output)
+
+            if i == 100:
+                break
+
+        name, acc = train_metric.get()
+
+        checkpoint = {
+        "net": net.state_dict(),
+        'optimizer':optimizer.state_dict(),
+        "epoch": epoch +1
+        }
+        
+        torch.save(checkpoint, os.path.join(model_save_abspath, 'ckpt_epoch_%s.pth' %(str(epoch))))
+
+        # Update history and print metrics
+        train_history.update([acc])
+        print('[Epoch %d] train=%f loss=%f time: %f' %
+            (epoch, acc, train_loss / (i+1), time.time()-tic))
+        
+        history_record.append({'epoch': epoch, 'train_loss': train_loss, 'train_acc': acc}, ignore_index=True)
+
+    # We can plot the metric scores with:
+    train_history.plot()
+
+    DF_to_CSV(history_record, history_save_abspath, "history_{}.csv".format(target_name))
 
 ######################################################################
 # We can see that the training accuracy increase quickly.
 # Actually, if you look back tutorial 4 (Dive Deep into Training I3D mdoels on Kinetcis400) and compare the training curve,
 # you will see fine-tuning can achieve much better result using much less time.
 # Try fine-tuning other SOTA video models on your own dataset and see how it goes.
+
+
+def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
+    # check params are OK to use
+    if csv_name.split('.')[-1] != 'csv':
+        csv_name += '.csv'
+        
+    if not os.path.exists(csv_dirpath):
+        print("lib_IO_fun.py-> DF_to_CSV: Path is not exists, create one:%s"%csv_dirpath)
+        os.makedirs(csv_dirpath)
+        
+    df.to_csv(os.path.join(csv_dirpath, csv_name), header=True, index =index)
+    
+    return os.path.join(csv_dirpath, csv_name)
+
+if __name__ == "__main__":
+    target_name = "K:\ActionRecognition_OpenPose"
+    save_rootpath = "Comparision_20220312"
+    
+    main(target_name, save_rootpath)
