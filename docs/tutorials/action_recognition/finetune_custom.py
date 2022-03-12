@@ -193,6 +193,9 @@ def main(target_name, save_rootpath):
     
     history_record = pd.DataFrame(columns=['epoch', 'train_loss', 'train_acc'])
     model_save_rootpath = os.path.join(save_rootpath, "model")
+    if not os.path.exists(model_save_rootpath):
+        os.makedirs(model_save_rootpath)
+    
     history_save_abspath = os.path.join(save_rootpath, "history")
 
     for epoch in range(epochs):
