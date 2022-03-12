@@ -112,7 +112,7 @@ def main(target_name, save_rootpath):
     batch_size = per_device_batch_size * num_gpus
 
     train_dataset = VideoClsCustom(root=os.path.expanduser(r'.\\'),
-                                setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record.txt'),
+                                setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record_rand_0.txt'),
                                 train=True,
                                 new_length=60,
                                 transform=transform_train,
@@ -187,23 +187,23 @@ def main(target_name, save_rootpath):
     #   In order to finish the tutorial quickly, we only fine tune for 3 epochs, and 100 iterations per epoch for UCF101.
     #   In your experiments, you can set the hyper-parameters depending on your dataset.
 
-    epochs = 100
+    epochs = 10
     lr_decay_count = 0
 
     
     history_record = pd.DataFrame(columns=['epoch', 'train_loss', 'train_acc'])
-    model_save_rootpath = os.path.join(save_rootpath, "model")
+    model_save_rootpath = os.path.join(save_rootpath, target_name, "model")
     if not os.path.exists(model_save_rootpath):
         os.makedirs(model_save_rootpath)
     
-    history_save_abspath = os.path.join(save_rootpath, "history")
+    history_save_abspath = os.path.join(save_rootpath, target_name, "history")
 
     for epoch in range(epochs):
         tic = time.time()
         train_metric.reset()
         train_loss = 0
         
-        model_save_abspath = os.path.join(model_save_rootpath, 'model_epoch_{}.pth'.format(epoch))
+        
         
 
         # Learning rate decay
@@ -241,26 +241,21 @@ def main(target_name, save_rootpath):
                 break
 
         name, acc = train_metric.get()
-
-        checkpoint = {
-        "net": net.state_dict(),
-        'optimizer':optimizer.state_dict(),
-        "epoch": epoch +1
-        }
         
-        torch.save(checkpoint, os.path.join(model_save_abspath, 'ckpt_epoch_%s.pth' %(str(epoch))))
 
         # Update history and print metrics
         train_history.update([acc])
         print('[Epoch %d] train=%f loss=%f time: %f' %
             (epoch, acc, train_loss / (i+1), time.time()-tic))
         
-        history_record.append({'epoch': epoch, 'train_loss': train_loss, 'train_acc': acc}, ignore_index=True)
+        history_record.append({'epoch': epoch+1, 'train_loss': train_loss, 'train_acc': acc}, ignore_index=True)
 
     # We can plot the metric scores with:
-    train_history.plot()
+    torch.save(net, os.path.join(model_save_rootpath, 'ckpt.pth'))
 
     DF_to_CSV(history_record, history_save_abspath, "history_{}.csv".format(target_name))
+    # train_history.plot()
+    
 
 ######################################################################
 # We can see that the training accuracy increase quickly.
@@ -283,7 +278,7 @@ def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
     return os.path.join(csv_dirpath, csv_name)
 
 if __name__ == "__main__":
-    target_name = "K:\ActionRecognition_OpenPose"
-    save_rootpath = "Comparision_20220312"
+    save_rootpath = "K:\ActionRecognition_OpenPose"
+    target_name = "Comparision_20220312"
     
     main(target_name, save_rootpath)
