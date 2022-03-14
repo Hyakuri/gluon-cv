@@ -263,9 +263,10 @@ def main(target_name, save_rootpath, model_name):
         # export_block(model_name, net, epoch=epoch+1, preprocess=True, layout='HWC')
         # export_block(model_name, net, epoch=epoch+1, preprocess=None, layout='CHW')
         history_record = history_record.append({'epoch': epoch+1, 'train_loss': train_loss, 'train_acc': acc}, ignore_index=True)
+        DF_to_CSV(history_record, history_save_abspath, "history_{}_{}.csv".format(target_name, epoch+1))
 
     # We can plot the metric scores with:
-    torch.save(net, os.path.join(model_save_rootpath, 'ckpt.pth'))
+    # torch.save(net, os.path.join(model_save_rootpath, 'ckpt.pth'))
 
     DF_to_CSV(history_record, history_save_abspath, "history_{}.csv".format(target_name))
     # train_history.plot()
@@ -292,7 +293,7 @@ def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
     return os.path.join(csv_dirpath, csv_name)
 
 if __name__ == "__main__":
-    model_name = "i3d_resnet50_v1_kinetics400"
+    model_name = "i3d_resnet50_v1_ucf101"
     save_rootpath = "K:\ActionRecognition_OpenPose"
     target_name = "Comp_{}_{}".format(model_name, time.strftime("%Y%m%d%H%M", time.localtime()))
     if not os.path.exists(os.path.join(save_rootpath, target_name)):
