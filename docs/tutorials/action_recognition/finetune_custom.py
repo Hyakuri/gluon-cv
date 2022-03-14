@@ -45,6 +45,7 @@ from gluoncv.data.transforms import video
 from gluoncv.data import VideoClsCustom
 from gluoncv.model_zoo import get_model
 from gluoncv.utils import makedirs, LRSequential, LRScheduler, split_and_load, TrainingHistory
+from gluoncv.utils import export_block
 
 import pandas as pd
 import torch
@@ -106,17 +107,17 @@ import torchvision.models as models
 num_gpus = 1
 ctx = [mx.gpu(i) for i in range(num_gpus)]
 transform_train = video.VideoGroupTrainTransform(size=(224, 224), scale_ratios=[1.0, 0.8], mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-per_device_batch_size = 5
+per_device_batch_size = 2
 num_workers = 0
 batch_size = per_device_batch_size * num_gpus
 
-def main(target_name, save_rootpath):
+def main(target_name, save_rootpath, model_name):
     
 
     train_dataset = VideoClsCustom(root=os.path.expanduser(r'.\\'),
-                                setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record_rand_0.txt'),
+                                setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record_randomed.txt'),
                                 train=True,
-                                new_length=60,
+                                new_length=32,
                                 transform=transform_train,
                                 video_loader=True,
                                 use_decord=True)
@@ -134,7 +135,7 @@ def main(target_name, save_rootpath):
     #
     # For simple fine-tuning, people usually just replace the last classification (dense) layer to the number of classes in your dataset
     # without changing other things. In GluonCV, you can get your customized model with one line of code.
-    net = get_model(name='i3d_resnet50_v1_custom', nclass=13)
+    net = get_model(name= model_name, nclass=13)
     net.collect_params().reset_ctx(ctx)
     print(net)
 
@@ -189,7 +190,7 @@ def main(target_name, save_rootpath):
     #   In order to finish the tutorial quickly, we only fine tune for 3 epochs, and 100 iterations per epoch for UCF101.
     #   In your experiments, you can set the hyper-parameters depending on your dataset.
 
-    epochs = 10
+    epochs = 100
     lr_decay_count = 0
 
     
@@ -197,9 +198,14 @@ def main(target_name, save_rootpath):
     model_save_rootpath = os.path.join(save_rootpath, target_name, "model")
     if not os.path.exists(model_save_rootpath):
         os.makedirs(model_save_rootpath)
+        
+    checkpoint_path = os.path.join(model_save_rootpath, "checkpoint")
+    if not os.path.exists(checkpoint_path):
+        os.makedirs(checkpoint_path)
     
     history_save_abspath = os.path.join(save_rootpath, target_name, "history")
 
+    net.hybridize()
     for epoch in range(epochs):
         tic = time.time()
         train_metric.reset()
@@ -250,7 +256,13 @@ def main(target_name, save_rootpath):
         print('[Epoch %d] train=%f loss=%f time: %f' %
             (epoch, acc, train_loss / (i+1), time.time()-tic))
         
-        history_record.append({'epoch': epoch+1, 'train_loss': train_loss, 'train_acc': acc}, ignore_index=True)
+        # ref: https://mxnet.apache.org/versions/1.9.0/api/python/docs/tutorials/packages/gluon/blocks/save_load_params.html
+        # torch.save(checkpoint, model_save_rootpath + "\\checkpoint\\ckpt_epoch_{}".format(str(epoch+1)))
+        net.save_parameters(os.path.join(checkpoint_path, "ckpt_epoch_{}.params".format(str(epoch+1))))
+        # export_block('ckpt_epoch_{}'.format(str(epoch+1)), net, epoch=epoch+1, preprocess=True, layout='HWC')
+        # export_block(model_name, net, epoch=epoch+1, preprocess=True, layout='HWC')
+        # export_block(model_name, net, epoch=epoch+1, preprocess=None, layout='CHW')
+        history_record = history_record.append({'epoch': epoch+1, 'train_loss': train_loss, 'train_acc': acc}, ignore_index=True)
 
     # We can plot the metric scores with:
     torch.save(net, os.path.join(model_save_rootpath, 'ckpt.pth'))
@@ -280,7 +292,10 @@ def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
     return os.path.join(csv_dirpath, csv_name)
 
 if __name__ == "__main__":
+    model_name = "i3d_resnet50_v1_kinetics400"
     save_rootpath = "K:\ActionRecognition_OpenPose"
-    target_name = "Comparision_20220312"
+    target_name = "Comp_{}_{}".format(model_name, time.strftime("%Y%m%d%H%M", time.localtime()))
+    if not os.path.exists(os.path.join(save_rootpath, target_name)):
+        os.makedirs(os.path.join(save_rootpath, target_name))
     
-    main(target_name, save_rootpath)
+    main(target_name, save_rootpath, model_name)
