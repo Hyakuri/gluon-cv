@@ -117,7 +117,7 @@ def main(target_name, save_rootpath, model_name):
     train_dataset = VideoClsCustom(root=os.path.expanduser(r'.\\'),
                                 setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record_randomed.txt'),
                                 train=True,
-                                new_length=32,
+                                new_length=60,
                                 transform=transform_train,
                                 video_loader=True,
                                 use_decord=True)
@@ -154,7 +154,7 @@ def main(target_name, save_rootpath, model_name):
     # Learning rate decay factor
     lr_decay = 0.1
     # Epochs where learning rate decays
-    lr_decay_epoch = [40, 80, 100]
+    lr_decay_epoch = [40, 80, 120, 160, 200]
 
     # Stochastic gradient descent
     optimizer = 'sgd'
@@ -190,7 +190,7 @@ def main(target_name, save_rootpath, model_name):
     #   In order to finish the tutorial quickly, we only fine tune for 3 epochs, and 100 iterations per epoch for UCF101.
     #   In your experiments, you can set the hyper-parameters depending on your dataset.
 
-    epochs = 100
+    epochs = 200
     lr_decay_count = 0
 
     
