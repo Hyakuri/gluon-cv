@@ -136,8 +136,14 @@ def main(target_name, save_rootpath, model_name):
     #
     # For simple fine-tuning, people usually just replace the last classification (dense) layer to the number of classes in your dataset
     # without changing other things. In GluonCV, you can get your customized model with one line of code.
-    net = get_model(name= model_name, nclass=13)
-    net.collect_params().reset_ctx(ctx)
+    
+    #ref: 
+    # https://github.com/dmlc/gluon-cv/issues/229#issuecomment-446468952
+    # https://mxnet.apache.org/versions/1.6/api/python/docs/tutorials/getting-started/crash-course/5-predict.html
+    # https://mxnet.apache.org/versions/1.9.0/api/python/docs/tutorials/packages/gluon/blocks/save_load_params.html
+    model_path = "..."
+    net = get_model(name= model_name, nclass=13, pretrained_base=False)
+    net.load_parameters(model_path, ctx=ctx)
     print(net)
 
     ################################################################
