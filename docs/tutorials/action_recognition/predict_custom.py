@@ -45,8 +45,10 @@ import mxnet.ndarray as nd
 from gluoncv.data.transforms import video
 from gluoncv.data import VideoClsCustom
 from gluoncv.model_zoo import get_model
+from gluoncv.model_zoo import i3d_resnet50_v1_ucf101
 from gluoncv.utils import makedirs, LRSequential, LRScheduler, split_and_load, TrainingHistory
 from gluoncv.utils import export_block
+from gluoncv.utils.filesystem import try_import_decord
 
 import pandas as pd
 import torch
@@ -105,6 +107,32 @@ import torchvision.models as models
 # For your own dataset, you can just replace the value of ``root`` and ``setting`` to your data directory and your prepared text file.
 # Let's first define some basics.
 
+class OPT():
+    def __init__(self, data_path, model_path, save_path) -> None:
+        self.data_dir = data_path
+        self.need_root = None
+        self.data_list = None
+        self.dtype = np.float32
+        self.gpu_id = 0
+        self.mode = 'hybrid'
+        self.use_pretrained = True
+        self.resume_params = model_path
+        self.num_segments = 1
+        self.new_height = 224
+        self.new_width = 224
+        self.new_length = 60
+        self.new_step = 1
+        self.num_classes = 13
+        self.video_loader = True
+        self.use_decod = True
+        self.num_crop = 1
+        self.save_dir = save_path
+        
+        self.slowfast = False
+        self.input_size = 224
+        
+
+
 num_gpus = 1
 ctx = [mx.gpu(i) for i in range(num_gpus)]
 transform_train = video.VideoGroupTrainTransform(size=(224, 224), scale_ratios=[1.0, 0.8], mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -112,19 +140,26 @@ per_device_batch_size = 2
 num_workers = 0
 batch_size = per_device_batch_size * num_gpus
 
-def main(target_name, save_rootpath, model_name):
-    
+def main(data_path, model_path, save_path):
+    f = open(data_path, 'r')
+    data_list = f.readlines()
+    print('Load %d video samples.' % len(data_list))
 
-    train_dataset = VideoClsCustom(root=os.path.expanduser(r'.\\'),
-                                setting=os.path.expanduser(r'K:\ActionRecognition_data\18_data\video_data\label_record_randomed.txt'),
-                                train=True,
-                                new_length=60,
-                                transform=transform_train,
-                                video_loader=True,
-                                use_decord=True)
-    print('Load %d training samples.' % len(train_dataset))
-    train_data = gluon.data.DataLoader(train_dataset, batch_size=batch_size,
-                                    shuffle=True, num_workers=num_workers)
+    opt = OPT(data_path, model_path, save_path)
+
+    video_utils = VideoClsCustom(root=os.path.expanduser(r'.\\'),
+                                setting=data_list,
+                                num_segments=opt.num_segments,
+                                num_crop=opt.num_crop,
+                                new_length=opt.new_length,
+                                new_step=opt.new_step,
+                                video_loader=opt.video_loader,
+                                use_decord=opt.use_decod,
+                                lazy_init=True
+                                )
+    # print('Load %d training samples.' % len(train_dataset))
+    # train_data = gluon.data.DataLoader(train_dataset, batch_size=batch_size,
+    #                                 shuffle=False, num_workers=num_workers)
 
 
     ################################################################
@@ -141,144 +176,86 @@ def main(target_name, save_rootpath, model_name):
     # https://github.com/dmlc/gluon-cv/issues/229#issuecomment-446468952
     # https://mxnet.apache.org/versions/1.6/api/python/docs/tutorials/getting-started/crash-course/5-predict.html
     # https://mxnet.apache.org/versions/1.9.0/api/python/docs/tutorials/packages/gluon/blocks/save_load_params.html
-    model_path = "..."
-    net = get_model(name= model_name, nclass=13, pretrained_base=False)
-    net.load_parameters(model_path, ctx=ctx)
+    # net = get_model(name= model_name, nclass=13, pretrained_base=True)
+    # net.load_parameters(model_path, ctx=mx.gpu(0))
+    
+    net = i3d_resnet50_v1_ucf101(nclass=13, pretrained=False, pretrained_base=False,
+                                 ctx=mx.gpu(0))
+    net.load_parameters(opt.resume_params)
     print(net)
 
-    ################################################################
-    # We also provide other customized network architectures for you to use on your own dataset. You can simply change the ``dataset`` part in
-    # any pretrained model name to ``custom``, e.g., ``slowfast_4x16_resnet50_kinetics400`` to ``slowfast_4x16_resnet50_custom``.
-    #
-    # Once you have the dataloader and network for your own dataset, the rest is the same as in previous tutorials.
-    # Just define the optimizer, loss and metric, and kickstart the training.
-
-
-    ################################################################
-    # Optimizer, Loss and Metric
-    # --------------------------
-
-    # Learning rate decay factor
-    lr_decay = 0.1
-    # Epochs where learning rate decays
-    lr_decay_epoch = [40, 80, 120, 160, 200]
-
-    # Stochastic gradient descent
-    optimizer = 'sgd'
-    # Set parameters
-    optimizer_params = {'learning_rate': 0.001, 'wd': 0.0001, 'momentum': 0.9}
-
-    # Define our trainer for net
-    trainer = gluon.Trainer(net.collect_params(), optimizer, optimizer_params)
-
-    ################################################################
-    # In order to optimize our model, we need a loss function.
-    # For classification tasks, we usually use softmax cross entropy as the
-    # loss function.
-
-    loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
-
-    ################################################################
-    # For simplicity, we use accuracy as the metric to monitor our training
-    # process. Besides, we record metric values, and will print them at the
-    # end of training.
-
-    train_metric = mx.metric.Accuracy()
-    train_history = TrainingHistory(['training-acc'])
-
-    ################################################################
-    # Training
-    # --------
-    #
-    # After all the preparations, we can finally start training!
-    # Following is the script.
-    #
-    # .. note::
-    #   In order to finish the tutorial quickly, we only fine tune for 3 epochs, and 100 iterations per epoch for UCF101.
-    #   In your experiments, you can set the hyper-parameters depending on your dataset.
-
-    epochs = 200
-    lr_decay_count = 0
 
     
-    history_record = pd.DataFrame(columns=['epoch', 'train_loss', 'train_acc'])
-    model_save_rootpath = os.path.join(save_rootpath, target_name, "model")
-    if not os.path.exists(model_save_rootpath):
-        os.makedirs(model_save_rootpath)
-        
-    checkpoint_path = os.path.join(model_save_rootpath, "checkpoint")
-    if not os.path.exists(checkpoint_path):
-        os.makedirs(checkpoint_path)
+    net.hybridize(static_alloc=True, static_shape=True)
     
-    history_save_abspath = os.path.join(save_rootpath, target_name, "history")
-
-    net.hybridize()
-    for epoch in range(epochs):
-        tic = time.time()
-        train_metric.reset()
-        train_loss = 0
+    classes = ["walk", "sit_down", "sit_up",
+                "climb_down", "climb_up",
+                "squat_down", "squat_up",
+                "take_up", "throw",
+                "tumble_down", "tumble_up",
+                "pick_up", "pick_down"]
+    
+    predict_record = pd.DataFrame(columns=['sample_id', 'true_label', 'predict_label'])
+    
+    
+    start_time = time.time()
+    for vid, vline in enumerate(data_list):
+        video_path = vline.split()[0]
+        video_name = video_path.split('/')[-1]
+        # if opt.need_root:
+        #     video_path = os.path.join(opt.data_dir, video_path)
+        video_data = read_data(opt, video_path, transform_train, video_utils)
+        video_input = video_data.as_in_context(mx.gpu(0))
+        pred = net(video_input.astype(opt.dtype, copy=False))
         
+        # save predict results
+        pred_label = np.argmax(pred.asnumpy())
         
+        # if classes:
+        #     pred_label = classes[pred_label]
+        result_arr = [vid, vline.split()[-1], pred_label]
         
-
-        # Learning rate decay
-        if epoch == lr_decay_epoch[lr_decay_count]:
-            trainer.set_learning_rate(trainer.learning_rate*lr_decay)
-            lr_decay_count += 1
-
-        # Loop through each batch of training data
-        for i, batch in enumerate(train_data):
-            # Extract data and label
-            data = split_and_load(batch[0], ctx_list=ctx, batch_axis=0)
-            label = split_and_load(batch[1], ctx_list=ctx, batch_axis=0)
-
-            # AutoGrad
-            with ag.record():
-                output = []
-                for _, X in enumerate(data):
-                    X = X.reshape((-1,) + X.shape[2:])
-                    pred = net(X)
-                    output.append(pred)
-                loss = [loss_fn(yhat, y) for yhat, y in zip(output, label)]
-
-            # Backpropagation
-            for l in loss:
-                l.backward()
-
-            # Optimize
-            trainer.step(batch_size)
-
-            # Update metrics
-            train_loss += sum([l.mean().asscalar() for l in loss])
-            train_metric.update(label, output)
-
-            if i == 100:
-                break
-
-        name, acc = train_metric.get()
-        
-
-        # Update history and print metrics
-        train_history.update([acc])
-        print('[Epoch %d] train=%f loss=%f time: %f' %
-            (epoch, acc, train_loss / (i+1), time.time()-tic))
-        
-        # ref: https://mxnet.apache.org/versions/1.9.0/api/python/docs/tutorials/packages/gluon/blocks/save_load_params.html
-        # torch.save(checkpoint, model_save_rootpath + "\\checkpoint\\ckpt_epoch_{}".format(str(epoch+1)))
-        net.save_parameters(os.path.join(checkpoint_path, "ckpt_epoch_{}.params".format(str(epoch+1))))
-        # export_block('ckpt_epoch_{}'.format(str(epoch+1)), net, epoch=epoch+1, preprocess=True, layout='HWC')
-        # export_block(model_name, net, epoch=epoch+1, preprocess=True, layout='HWC')
-        # export_block(model_name, net, epoch=epoch+1, preprocess=None, layout='CHW')
-        history_record = history_record.append({'epoch': epoch+1, 'train_loss': train_loss, 'train_acc': acc}, ignore_index=True)
-        DF_to_CSV(history_record, history_save_abspath, "history_{}_{}.csv".format(target_name, epoch+1))
-
-    # We can plot the metric scores with:
-    # torch.save(net, os.path.join(model_save_rootpath, 'ckpt.pth'))
-
-    DF_to_CSV(history_record, history_save_abspath, "history_{}.csv".format(target_name))
-    # train_history.plot()
+        predict_record.loc[-1] = result_arr
+    
+    predict_record.to_csv(os.path.join(opt.save_dir, "predict_results"), header=True, index=False)
+    
+    end_time = time.time()
+    print('Total inference time is %4.2f minutes' % ((end_time - start_time) / 60))
     
 
+def read_data(opt, video_name, transform, video_utils):
+
+    decord = try_import_decord()
+    decord_vr = decord.VideoReader(video_name, width=opt.new_width, height=opt.new_height)
+    duration = len(decord_vr)
+
+    opt.skip_length = opt.new_length * opt.new_step
+    segment_indices, skip_offsets = video_utils._sample_test_indices(duration)
+
+    if opt.video_loader:
+        if opt.slowfast:
+            clip_input = video_utils._video_TSN_decord_slowfast_loader(video_name, decord_vr, duration, segment_indices, skip_offsets)
+        else:
+            clip_input = video_utils._video_TSN_decord_batch_loader(video_name, decord_vr, duration, segment_indices, skip_offsets)
+    else:
+        raise RuntimeError('We only support video-based inference.')
+
+    clip_input = transform(clip_input)
+
+    if opt.slowfast:
+        sparse_sampels = len(clip_input) // (opt.num_segments * opt.num_crop)
+        clip_input = np.stack(clip_input, axis=0)
+        clip_input = clip_input.reshape((-1,) + (sparse_sampels, 3, opt.input_size, opt.input_size))
+        clip_input = np.transpose(clip_input, (0, 2, 1, 3, 4))
+    else:
+        clip_input = np.stack(clip_input, axis=0)
+        clip_input = clip_input.reshape((-1,) + (opt.new_length, 3, opt.input_size, opt.input_size))
+        clip_input = np.transpose(clip_input, (0, 2, 1, 3, 4))
+
+    if opt.new_length == 1:
+        clip_input = np.squeeze(clip_input, axis=2)    # this is for 2D input case
+
+    return nd.array(clip_input)
 
 def verify_loaded_model(net):
     """Run inference using ten random images.
@@ -324,9 +301,14 @@ def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
 
 if __name__ == "__main__":
     model_name = "i3d_resnet50_v1_ucf101"
-    save_rootpath = "K:\ActionRecognition_OpenPose"
-    target_name = "Comp_{}_{}".format(model_name, time.strftime("%Y%m%d%H%M", time.localtime()))
+    model_path = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_custom_202203171302\model\checkpoint\ckpt_epoch_197.params"
+    data_path = r'K:\ActionRecognition_data\18_data\video_data\label_record_randomed.txt'
+    
+    
+    target_name = "test"
+    save_rootpath = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_custom_202203171302"
+    target_name = "estimation_{:s}_{}".format(target_name, time.strftime("%Y%m%d%H%M", time.localtime()))
     if not os.path.exists(os.path.join(save_rootpath, target_name)):
         os.makedirs(os.path.join(save_rootpath, target_name))
     
-    main(target_name, save_rootpath, model_name)
+    main(data_path, model_path, os.path.join(save_rootpath, target_name))
