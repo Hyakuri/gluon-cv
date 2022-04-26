@@ -215,9 +215,9 @@ def main(data_path, model_path, save_path):
         #     pred_label = classes[pred_label]
         result_arr = [vid, vline.split()[-1], pred_label]
         
-        predict_record.loc[-1] = result_arr
+        predict_record.loc[len(predict_record)] = result_arr
     
-    predict_record.to_csv(os.path.join(opt.save_dir, "predict_results"), header=True, index=False)
+    predict_record.to_csv(os.path.join(opt.save_dir, "predict_results.csv"), header=True, index=False)
     
     end_time = time.time()
     print('Total inference time is %4.2f minutes' % ((end_time - start_time) / 60))
@@ -301,14 +301,19 @@ def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
 
 if __name__ == "__main__":
     model_name = "i3d_resnet50_v1_ucf101"
-    model_path = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_custom_202203171302\model\checkpoint\ckpt_epoch_197.params"
-    data_path = r'K:\ActionRecognition_data\18_data\video_data\label_record_randomed.txt'
+    model_rootpath = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_custom_202203171302"
+    model_subpath = r"model\checkpoint\ckpt_epoch_197.params"
+    model_path = os.path.join(model_rootpath, model_subpath)
     
+    data_rootpath = r"K:\ActionRecognition_data\18_mask_data\video_data"
     
-    target_name = "test"
-    save_rootpath = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_custom_202203171302"
-    target_name = "estimation_{:s}_{}".format(target_name, time.strftime("%Y%m%d%H%M", time.localtime()))
-    if not os.path.exists(os.path.join(save_rootpath, target_name)):
-        os.makedirs(os.path.join(save_rootpath, target_name))
+    for mask_id in ["camera_back_prcd", "camera_front", "camera_side", "camera_back_new_prcd", "camera_front_new", "camera_side_new"]:
+        data_path = 'label_record_{}.txt'.format(mask_id)
+        data_path = os.path.join(data_rootpath, data_path)
     
-    main(data_path, model_path, os.path.join(save_rootpath, target_name))
+        target_name = "estimation_{:s}_{}".format(model_name, time.strftime("%Y%m%d%H%M", time.localtime()))
+        save_path = os.path.join(model_rootpath, target_name)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        
+        main(data_path, model_path, save_path)
