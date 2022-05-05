@@ -140,7 +140,7 @@ per_device_batch_size = 2
 num_workers = 0
 batch_size = per_device_batch_size * num_gpus
 
-def main(data_path, model_path, save_path):
+def main(data_path, model_path, save_path, mask_id):
     f = open(data_path, 'r')
     data_list = f.readlines()
     print('Load %d video samples.' % len(data_list))
@@ -195,13 +195,16 @@ def main(data_path, model_path, save_path):
                 "tumble_down", "tumble_up",
                 "pick_up", "pick_down"]
     
-    predict_record = pd.DataFrame(columns=['sample_id', 'true_label', 'predict_label'])
+    # predict_record = pd.DataFrame(columns=['sample_id', 'true_label', 'predict_label'])
+    predict_record = pd.DataFrame(columns=['sample_id', 'sub_id', 'cam_id', 'true_label', 'predict_label'])
     
     
     start_time = time.time()
     for vid, vline in enumerate(data_list):
         video_path = vline.split()[0]
-        video_name = video_path.split('/')[-1]
+        splited_path = os.path.normpath(video_path).split(os.path.sep)
+        video_name = splited_path[-1]
+        # print("current process: {}".format(video_path))
         # if opt.need_root:
         #     video_path = os.path.join(opt.data_dir, video_path)
         video_data = read_data(opt, video_path, transform_train, video_utils)
@@ -213,11 +216,11 @@ def main(data_path, model_path, save_path):
         
         # if classes:
         #     pred_label = classes[pred_label]
-        result_arr = [vid, vline.split()[-1], pred_label]
+        result_arr = [vid, splited_path[-3], splited_path[-2],  int(vline.split()[-1]), pred_label]
         
         predict_record.loc[len(predict_record)] = result_arr
     
-    predict_record.to_csv(os.path.join(opt.save_dir, "predict_results.csv"), header=True, index=False)
+    predict_record.to_csv(os.path.join(opt.save_dir, "predict_results_{:s}.csv".format(mask_id)), header=True, index=False)
     
     end_time = time.time()
     print('Total inference time is %4.2f minutes' % ((end_time - start_time) / 60))
@@ -285,6 +288,34 @@ def verify_loaded_model(net):
 # you will see fine-tuning can achieve much better result using much less time.
 # Try fine-tuning other SOTA video models on your own dataset and see how it goes.
 
+def get_cover_type():
+    cover_type = ['bottom', 'middle', 'top']
+    return cover_type
+
+def get_cover_rate():
+    return [0.3, 0.5, 0.7]
+
+# list whole pattern of created masks
+# return: mask_state[mask_rate, mask_type]
+def get_mask_state():
+    cover_type = get_cover_type()
+    cover_rate = get_cover_rate()
+    mask_state = []
+
+    for c_rate in cover_rate:
+        for c_type in cover_type:
+            mask_state.append(c_type + str(c_rate))
+
+    return np.array(mask_state).reshape(len(cover_rate), len(cover_type))
+
+def get_mask_class():
+    # mask_class = ["grid_stochastic_mask", "stochastic_position_mask", "grid_vertical_mask", "grid_horizontal_mask"]
+    mask_class = ["grid_stochastic_mask", "stochastic_position_mask", "grid_horizontal_mask"]
+    return np.array(mask_class)
+
+def get_total_mask_status():
+    total = np.append(get_mask_state().ravel(), get_mask_class())
+    return total
 
 def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
     # check params are OK to use
@@ -300,20 +331,25 @@ def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
     return os.path.join(csv_dirpath, csv_name)
 
 if __name__ == "__main__":
-    model_name = "i3d_resnet50_v1_ucf101"
-    model_rootpath = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_custom_202203171302"
-    model_subpath = r"model\checkpoint\ckpt_epoch_197.params"
+    model_name = "i3d_resnet50_v1_kinetics400"
+    model_rootpath = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_kinetics400_202203151419"
+    model_subpath = r"model\checkpoint\ckpt_epoch_100.params"
     model_path = os.path.join(model_rootpath, model_subpath)
     
-    data_rootpath = r"K:\ActionRecognition_data\18_mask_data\video_data"
+    # data_rootpath = r"K:\ActionRecognition_data\18_mask_data\video_data"
+    data_rootpath = r"J:\ActionRecognition_data\18_mask_data\video_data"
     
-    for mask_id in ["camera_back_prcd", "camera_front", "camera_side", "camera_back_new_prcd", "camera_front_new", "camera_side_new"]:
+    target_name = "estimation_{:s}_{}".format(model_name, time.strftime("%Y%m%d%H%M", time.localtime()))
+    
+    for mask_id in get_total_mask_status():
+        if mask_id == "bottom0.3":
+            continue
         data_path = 'label_record_{}.txt'.format(mask_id)
         data_path = os.path.join(data_rootpath, data_path)
     
-        target_name = "estimation_{:s}_{}".format(model_name, time.strftime("%Y%m%d%H%M", time.localtime()))
         save_path = os.path.join(model_rootpath, target_name)
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         
-        main(data_path, model_path, save_path)
+        main(data_path, model_path, save_path, mask_id)
+
