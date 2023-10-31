@@ -220,7 +220,7 @@ def main(data_path, model_path, save_path, mask_id):
         
         predict_record.loc[len(predict_record)] = result_arr
     
-    predict_record.to_csv(os.path.join(opt.save_dir, "predict_results_{:s}.csv".format(mask_id)), header=True, index=False)
+    predict_record.to_csv(os.path.join(opt.save_dir, "predict_results_{:s}.csv".format(str(mask_id))), header=True, index=False)
     
     end_time = time.time()
     print('Total inference time is %4.2f minutes' % ((end_time - start_time) / 60))
@@ -330,7 +330,7 @@ def DF_to_CSV(df, csv_dirpath, csv_name, index =False):
     
     return os.path.join(csv_dirpath, csv_name)
 
-if __name__ == "__main__":
+def mask_main():
     model_name = "i3d_resnet50_v1_kinetics400"
     model_rootpath = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_kinetics400_202203151419"
     model_subpath = r"model\checkpoint\ckpt_epoch_100.params"
@@ -353,3 +353,29 @@ if __name__ == "__main__":
         
         main(data_path, model_path, save_path, mask_id)
 
+
+def org_main(model_name, model_rootpath, model_subpath):
+    model_path = os.path.join(model_rootpath, model_subpath)
+    
+    data_rootpath = r"K:\ActionRecognition_data\18_data\video_data"
+    
+    target_name = "estimation_{:s}_{}".format(model_name, time.strftime("%Y%m%d%H%M", time.localtime()))
+    
+    for sub_id in range(1, 11):
+        data_path = 'label_record_{}.txt'.format(sub_id)
+        data_path = os.path.join(data_rootpath, data_path)
+    
+        save_path = os.path.join(model_rootpath, target_name)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        
+        main(data_path, model_path, save_path, sub_id)
+
+
+
+if __name__ == "__main__":
+    model_name = "i3d_resnet50_v1_kinetics400"
+    model_rootpath = r"K:\ActionRecognition_OpenPose\Comp_i3d_resnet50_v1_kinetics400_202203151419"
+    model_subpath = r"model\checkpoint\ckpt_epoch_100.params"
+    
+    org_main(model_name, model_rootpath, model_subpath)
